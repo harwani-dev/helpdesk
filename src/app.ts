@@ -1,10 +1,11 @@
 import express from 'express';
-import AuthRouter from './routes/auth.js';
-import UserRouter from './routes/user.js';
-import TicketRouter from './routes/ticket.js';
-import FeedbackRouter from './routes/feedback.js';
+import AuthRouter from './routes/auth';
+import UserRouter from './routes/user';
+import TicketRouter from './routes/ticket';
+import FeedbackRouter from './routes/feedback';
 import { pinoHttp } from 'pino-http';
-import { logger } from './utils/logger';
+import { logger } from './lib/logger';
+import { ActivityRouter } from './routes/activity';
 const app = express();
 
 // Middleware
@@ -16,5 +17,6 @@ app.use('/api/auth', AuthRouter);
 app.use('/api/users', UserRouter);
 app.use('/api/tickets', TicketRouter);
 app.use('/api/feedback', FeedbackRouter);
+app.use('/api/activity', ActivityRouter);
 
 export default app;
