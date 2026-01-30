@@ -1,0 +1,147 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-repo"
+  output   = "../generated/prisma"
+
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id       String   @id @default(uuid())
+  email    String   @unique
+  username String   @unique
+  name     String?
+  password String
+  userType UserType
+
+  managerId String?
+  manager   User?   @relation("UserManager", fields: [managerId], references: [id])
+  reports   User[]  @relation("UserManager")
+
+  ticketsCreated Ticket[] @relation("TicketsCreated")
+
+  feedbackGiven    Feedback[] @relation("FeedbackGiven")
+  feedbackReceived Feedback[] @relation("FeedbackReceived")
+
+  activities Activity[] @relation("UserActivities")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Ticket {
+  id          String @id @default(uuid())
+  title       String
+  description String
+
+  status     TicketStatus
+  ticketType TicketType
+  remarks    String?
+
+  hrType HrType?
+  itType ItType?
+
+  requiresApproval Boolean
+
+  createdById String
+  createdBy   User   @relation("TicketsCreated", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Feedback {
+  id      String @id @default(uuid())
+  comment String?
+  rating  Int
+
+  givenById String
+  givenToId String
+
+  givenBy User @relation("FeedbackGiven", fields: [givenById], references: [id])
+  givenTo User @relation("FeedbackReceived", fields: [givenToId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Activity {
+  id      String       @id @default(uuid())
+  type    ActivityType
+  message String?
+
+  // Who performed the action
+  userId String
+  user   User   @relation("UserActivities", fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+enum UserType {
+  EMPLOYEE
+  HR
+  IT
+  ADMIN
+}
+
+// Type of ticket: HR or IT
+enum TicketType {
+  HR
+  IT
+}
+
+enum TicketStatus {
+  FORWARDED_TO_MANAGER
+  FORWARDED_TO_HR
+  FORWARDED_TO_IT
+  APPROVED
+  REJECTED
+  EXPIRED
+  RESOLVED
+}
+
+enum ActivityType {
+  TICKET_OPENED
+  TICKET_CLOSED
+  TICKET_APPROVED
+  TICKET_REJECTED
+  TICKET_REOPENED
+  TICKET_ASSIGNED
+}
+
+// Example HR ticket categories
+enum HrType {
+  LEAVE_BALANCE
+  LEAVE_POLICY
+  PAYROLL
+  PF
+  KEKA_ISSUES
+  SODEXO_FOOD_COUPONS
+  HEALTH_INSURANCE
+  ANY_FORM_OF_LETTER
+  REFERRAL_APPLICATION
+  COURSE_PURCHASE
+  BANK_ACCOUNT_ISSUE
+}
+
+// Example IT ticket categories
+enum ItType {
+  LAPTOP_BOOTUP
+  LAPTOP_CHARGER_NOT_WORKING
+  LAPTOP_BATTERY_LIFE
+  ADD_RAM
+  NEW_MONITOR
+  NEW_KEYBOARD
+  NEW_MOUSE
+  MOBILE_PHONE_ISSUE
+  MOBILE_DATA_CABLE_ISSUE
+  HARD_DISK_FAILURE
+}

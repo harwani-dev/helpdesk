@@ -1,0 +1,419 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+      "title": "Helpdesk",
+      "version": "1.0.0",
+      "description": ""
+    },
+    "servers": [
+      {
+        "url": "{{baseURL}}"
+      },
+      {
+        "url": ""
+      },
+      {
+        "url": "localhost:8000"
+      },
+      {
+        "url": "http://localhost:8000"
+      }
+    ],
+    "paths": {
+      "/api/auth/login/": {
+        "post": {
+          "summary": "admin login",
+          "responses": {},
+          "tags": [
+            "admin"
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "username": {
+                      "type": "string"
+                    },
+                    "password": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "username": "admin",
+                  "password": "admin"
+                }
+              }
+            }
+          }
+        }
+      },
+      "/": {
+        "get": {
+          "summary": "get all users",
+          "responses": {},
+          "tags": [
+            "admin"
+          ]
+        }
+      },
+      "/api/users/4/manager": {
+        "post": {
+          "summary": "set manager (only allowed for admin)",
+          "responses": {},
+          "tags": [
+            "admin"
+          ]
+        }
+      },
+      "/api/tickets/12": {
+        "get": {
+          "summary": "get specific ticket",
+          "parameters": [
+            {
+              "name": "Authorization",
+              "in": "header",
+              "required": false,
+              "deprecated": false,
+              "schema": {},
+              "example": "Token 208978e04787a28308aad1cc1fc7429ee8a9d169"
+            }
+          ],
+          "responses": {},
+          "tags": [
+            "admin"
+          ]
+        }
+      },
+      "/api/auth/register/": {
+        "post": {
+          "summary": "create account",
+          "responses": {},
+          "tags": [
+            "employee"
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "email": {
+                      "type": "string",
+                      "format": "email"
+                    },
+                    "password": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "email": "emp3@aubergine.co",
+                  "password": "emppassword",
+                  "username": "employee3"
+                }
+              }
+            }
+          }
+        }
+      },
+      "/api/tickets/": {
+        "get": {
+          "summary": "get all tickets",
+          "parameters": [
+            {
+              "name": "Authorization",
+              "in": "header",
+              "schema": {
+                "type": "string"
+              },
+              "example": "Token 0017fdea00ffd4044d53028f7f026b3ba1c8a518"
+            }
+          ],
+          "responses": {},
+          "tags": [
+            "employee"
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "remarks": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "remarks": "the course is expired on udemy."
+                }
+              }
+            }
+          }
+        }
+      },
+      "/api/tickets": {
+        "post": {
+          "summary": "create a new ticket (no approval required)",
+          "parameters": [
+            {
+              "name": "Authorization",
+              "in": "header",
+              "schema": {
+                "type": "string"
+              },
+              "example": "Token 63d245e353484d95a7a53ef0ef22cbc7b6fd1ac3"
+            }
+          ],
+          "responses": {},
+          "tags": [
+            "employee"
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "request_type": {
+                      "type": "string"
+                    },
+                    "it_type": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "title": "Laptop Bootup Issue",
+                  "description": "My laptop is taking too long to boot up. Please help troubleshoot.",
+                  "request_type": "it",
+                  "it_type": "laptop_bootu"
+                }
+              }
+            }
+          }
+        }
+      },
+      "/api/tickets/1/reopen/": {
+        "post": {
+          "summary": "reopen a ticket",
+          "parameters": [
+            {
+              "name": "Authorization",
+              "in": "header",
+              "required": false,
+              "deprecated": false,
+              "schema": {},
+              "example": "Token 0017fdea00ffd4044d53028f7f026b3ba1c8a518"
+            }
+          ],
+          "responses": {},
+          "tags": [
+            "employee"
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "/api/feedback/": {
+        "get": {
+          "summary": "get feedbacks",
+          "parameters": [
+            {
+              "name": "Authorization",
+              "in": "header",
+              "schema": {
+                "type": "string"
+              },
+              "example": "Token e3e165fd02d89e9d50593bb662baec0a26d6c676"
+            }
+          ],
+          "responses": {},
+          "tags": [
+            "employee"
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "rating": {
+                      "type": "integer"
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "given_by": {
+                      "nullable": true
+                    },
+                    "given_to": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "example": {
+                  "id": 1,
+                  "description": "Test description",
+                  "rating": 1,
+                  "created_at": "2026-01-23T07:20:45.893154Z",
+                  "updated_at": "2026-01-23T07:20:45.893172Z",
+                  "given_by": null,
+                  "given_to": 6
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "summary": "give feedback",
+          "parameters": [
+            {
+              "name": "Authorization",
+              "in": "header",
+              "schema": {
+                "type": "string"
+              },
+              "example": "Token e3e165fd02d89e9d50593bb662baec0a26d6c676"
+            }
+          ],
+          "responses": {},
+          "tags": [
+            "employee"
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "rating": {
+                      "type": "integer"
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "given_by": {
+                      "nullable": true
+                    },
+                    "given_to": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "example": {
+                  "id": 1,
+                  "description": "Test description",
+                  "rating": 1,
+                  "created_at": "2026-01-23T07:20:45.893154Z",
+                  "updated_at": "2026-01-23T07:20:45.893172Z",
+                  "given_by": null,
+                  "given_to": 6
+                }
+              }
+            }
+          }
+        }
+      },
+      "/api/tickets/action/14/": {
+        "post": {
+          "summary": "approve a request",
+          "parameters": [
+            {
+              "name": "Authorization",
+              "in": "header",
+              "schema": {
+                "type": "string"
+              },
+              "example": "Token 63d245e353484d95a7a53ef0ef22cbc7b6fd1ac3"
+            }
+          ],
+          "responses": {},
+          "tags": [
+            "manager"
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string"
+                    },
+                    "remarks": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "action": "approve",
+                  "remarks": "Go ahead"
+                }
+              }
+            }
+          }
+        }
+      },
+      "/api/tickets/action/": {
+        "get": {
+          "summary": "get all tickets (for hr)",
+          "parameters": [
+            {
+              "name": "Authorization",
+              "in": "header",
+              "schema": {
+                "type": "string"
+              },
+              "example": "Token 5e7520bac37c6dc79bc4026a31d30004b41d43d5"
+            }
+          ],
+          "responses": {},
+          "tags": [
+            "hr"
+          ]
+        }
+      }
+    }
+  }
