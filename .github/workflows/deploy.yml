@@ -31,14 +31,14 @@ jobs:
         run: |
           gcloud auth configure-docker $REGION-docker.pkg.dev
 
-          - name: Build and Push Image
-          run: |
-            IMAGE_SHA=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$SERVICE:${{ github.sha }}
-            IMAGE_LATEST=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$SERVICE:latest
-        
-            docker build -t $IMAGE_SHA -t $IMAGE_LATEST .
-            docker push $IMAGE_SHA
-            docker push $IMAGE_LATEST
+      - name: Build and Push Image
+        run: |
+          IMAGE_SHA=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$SERVICE:${{ github.sha }}
+          IMAGE_LATEST=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$SERVICE:latest
+
+          docker build -t $IMAGE_SHA -t $IMAGE_LATEST .
+          docker push $IMAGE_SHA
+          docker push $IMAGE_LATEST
 
       - name: Deploy to Cloud Run
         run: |
