@@ -13,11 +13,11 @@ export const registerSchema = Joi.object({
         .required(), // Field is required
 
     password: Joi.string()
-        .pattern(new RegExp('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$@$!%*?&])[A-Za-z\d$@$!%*?&]{8,}$/'))
+        .pattern(new RegExp(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$@$!%*?&])[A-Za-z\d$@$!%*?&]{8,}$/))
         .required(),
 
     email: Joi.string()
         .email()
-        .pattern(/@example\.co$/i)
+        .pattern(/@aubergine\.co$/i)
         .required()
 })
