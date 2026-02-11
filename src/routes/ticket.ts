@@ -1,9 +1,9 @@
-import { prisma } from "../lib/prisma";
+import { prisma } from "../lib/prisma.js";
 import { Router } from "express";
-import { authenticateToken, requireHRorITorManager } from "../middleware/middleware";
+import { authenticateToken, requireEmployee, requireHRorIT, requireHRorITorManager, requireManager } from "../middleware/middleware.js";
 import { logActivity } from "../lib/activity.js";
-import { ActivityType } from "../../generated/prisma/enums";
-import { createTicket, getActionTickets, getAllTickets, getTicketById, performActionTickets } from "../controllers/ticket";
+import { ActivityType } from "@prisma/client";
+import { createTicket, getActionTickets, getAllTickets, getEmployeeTickets, getTicketById, getTicketsByDepartment, performActionTickets } from "../controllers/ticket.js";
 
 const TicketRouter = Router();
 TicketRouter.use(authenticateToken);
@@ -13,6 +13,11 @@ TicketRouter.post('/action/:id/', requireHRorITorManager, performActionTickets);
 
 // get all action tickets
 TicketRouter.get('/action/', requireHRorITorManager, getActionTickets);
+
+TicketRouter.get("/manager/action/", requireManager, getEmployeeTickets);
+
+// get tickets by department (HR/IT only)
+TicketRouter.get("/department", requireHRorIT, getTicketsByDepartment);
 
 // reopen a ticket 
 TicketRouter.post('/:id/reopen/', async (req, res) => {
@@ -53,6 +58,6 @@ TicketRouter.get('/:id', getTicketById);
 TicketRouter.get('/', getAllTickets);
 
 // create a new ticket 
-TicketRouter.post('/', createTicket);
+TicketRouter.post('/', requireEmployee, createTicket);
 
 export default TicketRouter;
