@@ -1,5 +1,5 @@
 import type { Response } from "express";
-import { responseSchema } from "../validation/response";
+import { responseSchema } from "../validation/response.js";
 
 type ErrorPayload = {
     code: string;
