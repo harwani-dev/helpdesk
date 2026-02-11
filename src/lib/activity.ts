@@ -1,5 +1,5 @@
 import { prisma } from './prisma.js';
-import { ActivityType } from '../../generated/prisma/enums.js';
+import { ActivityType } from '@prisma/client';
 
 export async function logActivity(
   userId: string,
