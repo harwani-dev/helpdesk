@@ -5,7 +5,9 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-producti
 export interface JWTPayload {
   userId: string;
   email: string;
+  username: string;
   userType: string;
+  managerId: string | null;
 }
 
 export function generateToken(payload: JWTPayload): string {
