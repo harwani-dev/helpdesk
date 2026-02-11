@@ -1,12 +1,12 @@
 import type { Request, Response } from "express";
-import { createTicketSchema, performActionSchema } from "../validation/ticket";
-import { requiresManagerApproval } from "../utils/approval";
-import { sendResponse } from "../lib/sendResponse";
-import { HTTP_STATUS } from "../constants/status";
-import prisma from "../lib/prisma";
-import { TicketStatus, UserType, ActivityType, TicketType } from "../../generated/prisma/enums";
-import { logger } from "../utils/logger";
-import { logActivity } from "../lib/activity";
+import { createTicketSchema, performActionSchema } from "../validation/ticket.js";
+import { requiresManagerApproval } from "../utils/approval.js";
+import { sendResponse } from "../lib/sendResponse.js";
+import { HTTP_STATUS } from "../constants/status.js";
+import prisma from "../lib/prisma.js";
+import { TicketStatus, UserType, ActivityType, TicketType } from "@prisma/client";
+import { logger } from "../lib/logger.js";
+import { logActivity } from "../lib/activity.js";
 
 export const createTicket = async (req: Request, res: Response) => {
     const { error, value } = createTicketSchema.validate(req.body);
@@ -171,11 +171,21 @@ export const getActionTickets = async (req: Request, res: Response) => {
             default:
                 ticketStatus = TicketStatus.FORWARDED_TO_MANAGER
                 break
-
         }
+
+        // Managers only see tickets created by employees under them; HR/IT see all tickets with that status
+        const reportIds =
+            req.user!.userType === UserType.HR || req.user!.userType === UserType.IT
+                ? undefined
+                : (await prisma.user.findMany({
+                    where: { managerId: req.user!.id },
+                    select: { id: true },
+                })).map((r: { id: string }) => r.id);
+
         const tickets = await prisma.ticket.findMany({
             where: {
                 status: ticketStatus,
+                ...(reportIds !== undefined ? { createdById: { in: reportIds } } : {}),
             },
             include: {
                 createdBy: {
@@ -256,91 +266,110 @@ export const performActionTickets = async (req: Request, res: Response) => {
             });
         }
 
+        // Check if user is a manager (has reports or is ADMIN)
+        const reportsCount = await prisma.user.count({
+            where: {
+                managerId: req.user!.id,
+            },
+        });
+        const isManager = reportsCount > 0 || userType === 'ADMIN';
+
         // Validate action based on user type
         let validActions: string[];
         let expectedStatus: TicketStatus | null = null; // null means no status check needed (for reopen)
         let newStatus: TicketStatus;
         let activityType: ActivityType;
 
-        switch (userType) {
-            case UserType.HR:
-            case 'HR':
-                validActions = ['resolved', 'rejected'];
-                expectedStatus = TicketStatus.FORWARDED_TO_HR;
-                if (action.toLowerCase() === 'resolved') {
-                    newStatus = TicketStatus.RESOLVED;
-                    // TODO: add TICKET_RESOLVED in activity type enum
-                    activityType = ActivityType.TICKET_APPROVED;
-                } else {
-                    newStatus = TicketStatus.REJECTED;
-                    activityType = ActivityType.TICKET_REJECTED;
-                }
-                break;
-            case UserType.IT:
-            case 'IT':
-                validActions = ['resolved', 'rejected'];
-                expectedStatus = TicketStatus.FORWARDED_TO_IT;
-                if (action.toLowerCase() === 'resolved') {
-                    newStatus = TicketStatus.RESOLVED;
-                    // TODO: add TICKET_RESOLVED in activity type enum
-                    activityType = ActivityType.TICKET_APPROVED; 
-                } else {
-                    newStatus = TicketStatus.REJECTED;
-                    activityType = ActivityType.TICKET_REJECTED;
-                }
-                break;
-            case UserType.EMPLOYEE:
-            case 'EMPLOYEE':
-                validActions = ['reopen'];
-                // For reopen, check if ticket status is REJECTED
-                if (ticket.status !== TicketStatus.REJECTED) {
-                    logger.warn({ ticketId: id, userId: req.user!.id, ticketStatus: ticket.status }, `Ticket cannot be reopened - status must be REJECTED`);
+        // Handle managers first (employees with reports or ADMIN)
+        if (isManager && (userType === UserType.EMPLOYEE || userType === 'EMPLOYEE' || userType === 'ADMIN')) {
+            validActions = ['approve', 'rejected'];
+            expectedStatus = TicketStatus.FORWARDED_TO_MANAGER;
+            if (action.toLowerCase() === 'approve') {
+                // Determine next status based on ticket type
+                newStatus = ticket.ticketType === TicketType.HR
+                    ? TicketStatus.FORWARDED_TO_HR
+                    : TicketStatus.FORWARDED_TO_IT;
+                activityType = ActivityType.TICKET_APPROVED;
+            } else {
+                newStatus = TicketStatus.REJECTED;
+                activityType = ActivityType.TICKET_REJECTED;
+            }
+        } else {
+            switch (userType) {
+                case UserType.HR:
+                case 'HR':
+                    validActions = ['resolved', 'rejected'];
+                    expectedStatus = TicketStatus.FORWARDED_TO_HR;
+                    if (action.toLowerCase() === 'resolved') {
+                        newStatus = TicketStatus.RESOLVED;
+                        // TODO: add TICKET_RESOLVED in activity type enum
+                        activityType = ActivityType.TICKET_APPROVED;
+                    } else {
+                        newStatus = TicketStatus.REJECTED;
+                        activityType = ActivityType.TICKET_REJECTED;
+                    }
+                    break;
+                case UserType.IT:
+                case 'IT':
+                    validActions = ['resolved', 'rejected'];
+                    expectedStatus = TicketStatus.FORWARDED_TO_IT;
+                    if (action.toLowerCase() === 'resolved') {
+                        newStatus = TicketStatus.RESOLVED;
+                        // TODO: add TICKET_RESOLVED in activity type enum
+                        activityType = ActivityType.TICKET_APPROVED;
+                    } else {
+                        newStatus = TicketStatus.REJECTED;
+                        activityType = ActivityType.TICKET_REJECTED;
+                    }
+                    break;
+                case UserType.EMPLOYEE:
+                case 'EMPLOYEE':
+                    validActions = ['reopen'];
+                    // For reopen, check if ticket status is REJECTED
+                    if (ticket.status !== TicketStatus.REJECTED) {
+                        logger.warn({ ticketId: id, userId: req.user!.id, ticketStatus: ticket.status }, `Ticket cannot be reopened - status must be REJECTED`);
+                        return sendResponse(res, HTTP_STATUS.BAD_REQUEST, {
+                            success: false,
+                            data: null,
+                            error: {
+                                code: "INVALID_TICKET_STATUS",
+                                details: ["Ticket can only be reopened if it is in REJECTED status"]
+                            }
+                        });
+                    }
+                    // Verify user is the ticket creator
+                    if (ticket.createdById !== req.user!.id && req.user!.userType !== 'ADMIN') {
+                        logger.warn({ ticketId: id, userId: req.user!.id }, `User is not the creator of this ticket`);
+                        return sendResponse(res, HTTP_STATUS.FORBIDDEN, {
+                            success: false,
+                            data: null,
+                            error: {
+                                code: "FORBIDDEN",
+                                details: ["You can only reopen tickets that you created"]
+                            }
+                        });
+                    }
+                    // Determine the status to reopen to based on ticket properties
+                    if (ticket.requiresApproval) {
+                        newStatus = TicketStatus.FORWARDED_TO_MANAGER;
+                    } else {
+                        newStatus = ticket.ticketType === TicketType.HR
+                            ? TicketStatus.FORWARDED_TO_HR
+                            : TicketStatus.FORWARDED_TO_IT;
+                    }
+                    activityType = ActivityType.TICKET_REOPENED;
+                    break;
+                default:
+                    logger.warn({ userId: req.user!.id, userType }, `Invalid user type for ticket action`);
                     return sendResponse(res, HTTP_STATUS.BAD_REQUEST, {
                         success: false,
                         data: null,
                         error: {
-                            code: "INVALID_TICKET_STATUS",
-                            details: ["Ticket can only be reopened if it is in REJECTED status"]
+                            code: "INVALID_USER_TYPE",
+                            details: ["User type is not authorized to perform actions on tickets"]
                         }
                     });
-                }
-                // Verify user is the ticket creator
-                if (ticket.createdById !== req.user!.id && req.user!.userType !== 'ADMIN') {
-                    logger.warn({ ticketId: id, userId: req.user!.id }, `User is not the creator of this ticket`);
-                    return sendResponse(res, HTTP_STATUS.FORBIDDEN, {
-                        success: false,
-                        data: null,
-                        error: {
-                            code: "FORBIDDEN",
-                            details: ["You can only reopen tickets that you created"]
-                        }
-                    });
-                }
-                // Determine the status to reopen to based on ticket properties
-                if (ticket.requiresApproval) {
-                    newStatus = TicketStatus.FORWARDED_TO_MANAGER;
-                } else {
-                    newStatus = ticket.ticketType === TicketType.HR 
-                        ? TicketStatus.FORWARDED_TO_HR 
-                        : TicketStatus.FORWARDED_TO_IT;
-                }
-                activityType = ActivityType.TICKET_REOPENED;
-                break;
-            default:
-                // Manager
-                validActions = ['approve', 'reject'];
-                expectedStatus = TicketStatus.FORWARDED_TO_MANAGER;
-                if (action.toLowerCase() === 'approve') {
-                    // Determine next status based on ticket type
-                    newStatus = ticket.ticketType === TicketType.HR 
-                        ? TicketStatus.FORWARDED_TO_HR 
-                        : TicketStatus.FORWARDED_TO_IT;
-                    activityType = ActivityType.TICKET_APPROVED;
-                } else {
-                    newStatus = TicketStatus.REJECTED;
-                    activityType = ActivityType.TICKET_REJECTED;
-                }
-                break;
+            }
         }
 
         // Validate action
@@ -370,9 +399,9 @@ export const performActionTickets = async (req: Request, res: Response) => {
         }
 
         // For managers, verify they are the manager of the ticket creator
-        if (userType !== UserType.HR && userType !== 'HR' && userType !== UserType.IT && userType !== 'IT' && userType !== UserType.EMPLOYEE && userType !== 'EMPLOYEE' && userType !== 'ADMIN') {
-            const isManager = ticket.createdBy.managerId === req.user!.id || req.user!.userType === 'ADMIN';
-            if (!isManager) {
+        if (isManager) {
+            const isTicketCreatorManager = ticket.createdBy.managerId === req.user!.id || req.user!.userType === 'ADMIN';
+            if (!isTicketCreatorManager) {
                 logger.warn({ ticketId: id, userId: req.user!.id }, `User is not the manager of ticket creator`);
                 return sendResponse(res, HTTP_STATUS.FORBIDDEN, {
                     success: false,
@@ -388,7 +417,7 @@ export const performActionTickets = async (req: Request, res: Response) => {
         // Update ticket status
         const updatedTicket = await prisma.ticket.update({
             where: { id: id as string },
-            data: { status: newStatus },
+            data: { status: newStatus, remarks },
             include: {
                 createdBy: {
                     select: {
@@ -429,4 +458,90 @@ export const performActionTickets = async (req: Request, res: Response) => {
             }
         });
     }
+}
+
+// for HR/IT to see tickets by their department (HR sees HR tickets, IT sees IT tickets)
+export const getTicketsByDepartment = async (req: Request, res: Response) => {
+    try {
+        const userType = req.user!.userType;
+        const ticketType = userType === UserType.HR ? TicketType.HR : TicketType.IT;
+
+        const tickets = await prisma.ticket.findMany({
+            where: { ticketType },
+            include: {
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                    },
+                },
+            },
+            orderBy: {
+                id: 'desc',
+            },
+        });
+
+        logger.info({ userId: req.user!.id, userType, ticketType, count: tickets.length }, 'Department tickets retrieved successfully');
+        return sendResponse(res, HTTP_STATUS.OK, {
+            success: true,
+            data: tickets,
+            error: null
+        });
+    } catch (error) {
+        logger.error({ userId: req.user!.id, userType: req.user!.userType }, `Get department tickets error: ${error}`);
+        return sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, {
+            success: false,
+            data: null,
+            error: {
+                code: "INTERNAL_SERVER_ERROR",
+                details: ["There has been an internal server error"]
+            }
+        });
+    }
+};
+
+// for manager to see all his/her employee tickets
+export const getEmployeeTickets = async (req: Request, res: Response) => {
+    try {
+        const reportIds = (await prisma.user.findMany({
+            where: { managerId: req.user!.id },
+            select: { id: true },
+        })).map((r: { id: string }) => r.id);
+
+        const tickets = await prisma.ticket.findMany({
+            where: {
+                ...(reportIds !== undefined ? { createdById: { in: reportIds } } : {}),
+            },
+            include: {
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                    },
+                },
+            },
+            orderBy: {
+                id: 'desc',
+            },
+        });
+        logger.info({ userId: req.user!.id, userType: req.user!.userType }, 'Action tickets retrieved successfully');
+        return sendResponse(res, HTTP_STATUS.OK, {
+            success: true,
+            data: tickets,
+            error: null
+        });
+    } catch (error) {
+        logger.error({ userId: req.user!.id, userType: req.user!.userType }, `Get action tickets error: ${error}`);
+        return sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, {
+            success: false,
+            data: null,
+            error: {
+                code: "INTERNAL_SERVER_ERROR",
+                details: ["There has been an internal server error"]
+            }
+        });
+    }
+
 }

@@ -1,10 +1,10 @@
 import type { Request, Response } from "express";
-import prisma from "../lib/prisma";
-import { sendResponse } from "../lib/sendResponse";
-import { HTTP_STATUS } from "../constants/status";
-import { logger } from "../utils/logger";
-import { TicketStatus, UserType, TicketType } from "../../generated/prisma/enums";
-import { createFeedbackSchema } from "../validation/feedback";
+import prisma from "../lib/prisma.js";
+import { sendResponse } from "../lib/sendResponse.js";
+import { HTTP_STATUS } from "../constants/status.js";
+import { logger } from "../lib/logger.js";
+import { TicketStatus, UserType, TicketType } from "@prisma/client";
+import { createFeedbackSchema } from "../validation/feedback.js";
 
 export const getFeedbacks = async (req: Request, res: Response) => {
     try {
