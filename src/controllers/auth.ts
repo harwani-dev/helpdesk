@@ -1,12 +1,12 @@
 import type { Request, Response } from "express";
-import { loginSchema, registerSchema } from "../validation/auth";
-import prisma from "../lib/prisma";
-import { HTTP_STATUS } from "../constants/status";
-import { sendResponse } from "../lib/sendResponse";
-import { comparePassword, hashPassword } from "../utils/password";
-import { generateToken } from "../lib/jwt";
-import { UserType } from "../../generated/prisma/enums";
-import { logger } from "../utils/logger";
+import { loginSchema, registerSchema } from "../validation/auth.js";
+import prisma from "../lib/prisma.js";
+import { HTTP_STATUS } from "../constants/status.js";
+import { sendResponse } from "../lib/sendResponse.js";
+import { comparePassword, hashPassword } from "../utils/password.js";
+import { generateToken } from "../lib/jwt.js";
+import { UserType } from "@prisma/client";
+import { logger } from "../lib/logger.js";
 
 export const handleLogin = async (req: Request, res: Response) => {
     const { error, value } = loginSchema.validate(req.body);
@@ -57,8 +57,10 @@ export const handleLogin = async (req: Request, res: Response) => {
 
         const token = generateToken({
             userId: user.id,
+            username: user.username,
             email: user.email,
             userType: user.userType,
+            managerId: user.managerId
         });
 
         logger.info({ userId: user.id, username: value.username, userType: user.userType }, `Login successful`);
@@ -145,7 +147,9 @@ export const handleRegister = async (req: Request, res: Response) => {
         const token = generateToken({
             userId: user.id,
             email: user.email,
+            username: user.username,
             userType: UserType.EMPLOYEE,
+            managerId: user.managerId,
         });
 
         logger.info({ userId: user.id, username: value.username, email: value.email }, `User registered successfully`);
