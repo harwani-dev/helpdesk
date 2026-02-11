@@ -140,6 +140,21 @@ export const requireAdmin = (
 //   next();
 // };
 
+/** Only HR or IT; not available for employees or managers. */
+export const requireHRorIT = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  if (req.user.userType !== 'HR' && req.user.userType !== 'IT') {
+    return res.status(403).json({ error: 'This endpoint is only available for HR or IT' });
+  }
+  next();
+};
+
 export const requireHRorITorManager = async (
   req: Request,
   res: Response,
@@ -159,3 +174,37 @@ export const requireHRorITorManager = async (
 
   next();
 };
+
+
+export const requireManager = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  const reportsCount = await prisma.user.count({
+    where: {
+      managerId: req.user.id,
+    },
+  });
+  if (reportsCount === 0) {
+    return res.status(403).json({ error: 'This endpoint is not available for employees' });
+  }
+  next();
+}
+
+export const requireEmployee = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  if (req.user.userType !== "EMPLOYEE") {
+    return res.status(403).json({ error: 'This endpoint is only available for employees' });
+  }
+  next();
+}
