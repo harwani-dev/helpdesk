@@ -1,12 +1,22 @@
 import type { Request, Response } from "express";
-import prisma from "../lib/prisma";
-import { sendResponse } from "../lib/sendResponse";
-import { HTTP_STATUS } from "../constants/status";
+import prisma from "../lib/prisma.js";
+import { sendResponse } from "../lib/sendResponse.js";
+import { HTTP_STATUS } from "../constants/status.js";
 export const getActivity = async (req: Request, res: Response) => {
     try {
         const activities = await prisma.activity.findMany({
             orderBy: {
                 createdAt: "desc"
+            },
+            select: {
+                type: true,
+                message: true,
+                createdAt: true,
+                user: {
+                    select: {
+                        username: true
+                    }
+                }
             }
         });
 
