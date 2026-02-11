@@ -1,4 +1,4 @@
-import { TicketType, HrType, ItType } from "../../generated/prisma/enums";
+import { TicketType, HrType, ItType } from "@prisma/client";
 
 export const requiresManagerApproval = (
     ticketType: TicketType,
