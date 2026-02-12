@@ -9,7 +9,7 @@ const TicketRouter = Router();
 TicketRouter.use(authenticateToken);
 
 // approve/reject a request
-TicketRouter.post('/action/:id/', requireHRorITorManager, performActionTickets);
+TicketRouter.post('/action/:id/', performActionTickets);
 
 // get all action tickets
 TicketRouter.get('/action/', requireHRorITorManager, getActionTickets);

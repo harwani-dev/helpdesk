@@ -5,11 +5,11 @@ import { getMe, getUserById, getUsers, setManagerForUser, updateProfilePicture }
 const UserRouter = Router();
 UserRouter.use(authenticateToken);
 
+UserRouter.get('/me', getMe);
+
 UserRouter.get('/:id', getUserById);
 
 UserRouter.get('/', getUsers);
-
-UserRouter.get('/me', getMe);
 
 UserRouter.post('/profile', updateProfilePicture);
 
