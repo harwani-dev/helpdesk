@@ -1,8 +1,8 @@
 import Joi from "joi";
 
 export const updateSchema = Joi.object({
-    profileImage: Joi.string().trim().allow("").required(),
-    phone: Joi.string().trim().length(10).pattern(/^\d+$/).allow(""),
+    profileImage: Joi.string().trim().allow("").optional(),
+    phone: Joi.string().trim().length(10).pattern(/^\d+$/).allow("").optional(),
 });
 
 export const setManagerSchema = Joi.object({
