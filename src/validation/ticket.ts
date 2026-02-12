@@ -64,4 +64,5 @@ export const createTicketSchema = Joi.object({
 export const performActionSchema = Joi.object({
     action: Joi.string().trim().required(),
     remarks: Joi.string().trim().min(1).required(),
+    rating: Joi.number().integer().min(1).max(5).optional(), // Optional rating (1-5) when closing ticket
 });
