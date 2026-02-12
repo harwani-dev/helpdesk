@@ -23,8 +23,44 @@ export const createTicket = async (req: Request, res: Response) => {
         return sendResponse(res, HTTP_STATUS.BAD_REQUEST, response)
     }
 
-    const requiresApproval = requiresManagerApproval(value.ticketType, value.hrType, value.itType);
+    // Admins cannot create tickets
+    if (req.user!.userType === UserType.ADMIN) {
+        logger.warn({ userId: req.user!.id, userType: req.user!.userType }, `Admin attempted to create ticket`);
+        return sendResponse(res, HTTP_STATUS.FORBIDDEN, {
+            success: false,
+            data: null,
+            error: {
+                code: "FORBIDDEN",
+                details: ["Admins cannot create tickets"]
+            }
+        });
+    }
+
+    // Only EMPLOYEE user type can create tickets
+    if (req.user!.userType !== UserType.EMPLOYEE) {
+        logger.warn({ userId: req.user!.id, userType: req.user!.userType }, `Invalid user type attempted to create ticket`);
+        return sendResponse(res, HTTP_STATUS.FORBIDDEN, {
+            success: false,
+            data: null,
+            error: {
+                code: "FORBIDDEN",
+                details: ["Only employees can create tickets"]
+            }
+        });
+    }
+
     try {
+        // Check if user is a manager (has reports)
+        const reportsCount = await prisma.user.count({
+            where: {
+                managerId: req.user!.id,
+            },
+        });
+        const isManager = reportsCount > 0;
+
+        // Managers bypass manager approval
+        const requiresApproval = isManager ? false : requiresManagerApproval(value.ticketType, value.hrType, value.itType);
+
         const ticket = await prisma.ticket.create({
             data: {
                 title: value.title,
@@ -47,7 +83,7 @@ export const createTicket = async (req: Request, res: Response) => {
             },
         });
 
-        logger.info({ ticketId: ticket.id, userId: req.user!.id, status: ticket.status }, `Ticket created successfully`);
+        logger.info({ ticketId: ticket.id, userId: req.user!.id, status: ticket.status, isManager }, `Ticket created successfully`);
         return sendResponse(res, HTTP_STATUS.OK, {
             success: true,
             data: ticket,
@@ -83,7 +119,7 @@ export const getAllTickets = async (req: Request, res: Response) => {
                 },
             },
             orderBy: {
-                id: 'desc',
+                createdAt: 'desc',
             },
         });
 
@@ -236,7 +272,7 @@ export const performActionTickets = async (req: Request, res: Response) => {
 
     try {
         const { id } = req.params;
-        const { action, remarks } = value;
+        const { action, remarks, rating } = value;
         const userType = req.user!.userType;
 
         // Get ticket first to use for all validations
@@ -266,24 +302,43 @@ export const performActionTickets = async (req: Request, res: Response) => {
             });
         }
 
-        // Check if user is a manager (has reports or is ADMIN)
+        // Check if user is a manager (has reports)
         const reportsCount = await prisma.user.count({
             where: {
                 managerId: req.user!.id,
             },
         });
-        const isManager = reportsCount > 0 || userType === 'ADMIN';
+        const isManager = reportsCount > 0;
 
-        // Validate action based on user type
+        // Check if this is the user's own ticket
+        const isOwnTicket = ticket.createdById === req.user!.id;
+
+        // Validate action based on user type and role
         let validActions: string[];
-        let expectedStatus: TicketStatus | null = null; // null means no status check needed (for reopen)
+        let expectedStatus: TicketStatus | null = null; // null means no status check needed
         let newStatus: TicketStatus;
         let activityType: ActivityType;
 
-        // Handle managers first (employees with reports or ADMIN)
-        if (isManager && (userType === UserType.EMPLOYEE || userType === 'EMPLOYEE' || userType === 'ADMIN')) {
+
+        // MANAGER ROLE: Can approve or reject tickets of employees under them
+        if (isManager && userType === UserType.EMPLOYEE && !isOwnTicket) {
             validActions = ['approve', 'rejected'];
             expectedStatus = TicketStatus.FORWARDED_TO_MANAGER;
+
+            // Verify they are the manager of the ticket creator
+            const isTicketCreatorManager = ticket.createdBy.managerId === req.user!.id;
+            if (!isTicketCreatorManager) {
+                logger.warn({ ticketId: id, userId: req.user!.id }, `User is not the manager of ticket creator`);
+                return sendResponse(res, HTTP_STATUS.FORBIDDEN, {
+                    success: false,
+                    data: null,
+                    error: {
+                        code: "FORBIDDEN",
+                        details: ["You can only approve/reject tickets of employees under you"]
+                    }
+                });
+            }
+
             if (action.toLowerCase() === 'approve') {
                 // Determine next status based on ticket type
                 newStatus = ticket.ticketType === TicketType.HR
@@ -294,87 +349,127 @@ export const performActionTickets = async (req: Request, res: Response) => {
                 newStatus = TicketStatus.REJECTED;
                 activityType = ActivityType.TICKET_REJECTED;
             }
-        } else {
-            switch (userType) {
-                case UserType.HR:
-                case 'HR':
-                    validActions = ['resolved', 'rejected'];
-                    expectedStatus = TicketStatus.FORWARDED_TO_HR;
-                    if (action.toLowerCase() === 'resolved') {
-                        newStatus = TicketStatus.RESOLVED;
-                        // TODO: add TICKET_RESOLVED in activity type enum
-                        activityType = ActivityType.TICKET_APPROVED;
-                    } else {
-                        newStatus = TicketStatus.REJECTED;
-                        activityType = ActivityType.TICKET_REJECTED;
+        }
+        // HR ROLE: Can resolve or reject if status is FORWARDED_TO_HR
+        else if (userType === UserType.HR || userType === UserType.ADMIN) {
+            validActions = ['resolved', 'rejected'];
+            expectedStatus = TicketStatus.FORWARDED_TO_HR;
+
+            if (action.toLowerCase() === 'resolved') {
+                newStatus = TicketStatus.RESOLVED;
+                activityType = ActivityType.TICKET_APPROVED;
+            } else {
+                newStatus = TicketStatus.REJECTED;
+                activityType = ActivityType.TICKET_REJECTED;
+            }
+        }
+        // IT ROLE: Can resolve or reject if status is FORWARDED_TO_IT
+        else if (userType === UserType.IT || userType === UserType.ADMIN) {
+            validActions = ['resolved', 'rejected'];
+            expectedStatus = TicketStatus.FORWARDED_TO_IT;
+
+            if (action.toLowerCase() === 'resolved') {
+                newStatus = TicketStatus.RESOLVED;
+                activityType = ActivityType.TICKET_APPROVED;
+            } else {
+                newStatus = TicketStatus.REJECTED;
+                activityType = ActivityType.TICKET_REJECTED;
+            }
+        }
+        // NORMAL EMPLOYEE: Can close at any stage, reopen only if rejected
+        else if (userType === UserType.EMPLOYEE || userType === UserType.ADMIN) {
+            validActions = ['reopen', 'close'];
+
+            // Verify user is the ticket creator
+            if (!isOwnTicket) {
+                logger.warn({ ticketId: id, userId: req.user!.id }, `User is not the creator of this ticket`);
+                return sendResponse(res, HTTP_STATUS.FORBIDDEN, {
+                    success: false,
+                    data: null,
+                    error: {
+                        code: "FORBIDDEN",
+                        details: ["You can only perform actions on tickets that you created"]
                     }
-                    break;
-                case UserType.IT:
-                case 'IT':
-                    validActions = ['resolved', 'rejected'];
-                    expectedStatus = TicketStatus.FORWARDED_TO_IT;
-                    if (action.toLowerCase() === 'resolved') {
-                        newStatus = TicketStatus.RESOLVED;
-                        // TODO: add TICKET_RESOLVED in activity type enum
-                        activityType = ActivityType.TICKET_APPROVED;
-                    } else {
-                        newStatus = TicketStatus.REJECTED;
-                        activityType = ActivityType.TICKET_REJECTED;
-                    }
-                    break;
-                case UserType.EMPLOYEE:
-                case 'EMPLOYEE':
-                    validActions = ['reopen'];
-                    // For reopen, check if ticket status is REJECTED
-                    if (ticket.status !== TicketStatus.REJECTED) {
-                        logger.warn({ ticketId: id, userId: req.user!.id, ticketStatus: ticket.status }, `Ticket cannot be reopened - status must be REJECTED`);
-                        return sendResponse(res, HTTP_STATUS.BAD_REQUEST, {
-                            success: false,
-                            data: null,
-                            error: {
-                                code: "INVALID_TICKET_STATUS",
-                                details: ["Ticket can only be reopened if it is in REJECTED status"]
-                            }
-                        });
-                    }
-                    // Verify user is the ticket creator
-                    if (ticket.createdById !== req.user!.id && req.user!.userType !== 'ADMIN') {
-                        logger.warn({ ticketId: id, userId: req.user!.id }, `User is not the creator of this ticket`);
-                        return sendResponse(res, HTTP_STATUS.FORBIDDEN, {
-                            success: false,
-                            data: null,
-                            error: {
-                                code: "FORBIDDEN",
-                                details: ["You can only reopen tickets that you created"]
-                            }
-                        });
-                    }
-                    // Determine the status to reopen to based on ticket properties
-                    if (ticket.requiresApproval) {
-                        newStatus = TicketStatus.FORWARDED_TO_MANAGER;
-                    } else {
-                        newStatus = ticket.ticketType === TicketType.HR
-                            ? TicketStatus.FORWARDED_TO_HR
-                            : TicketStatus.FORWARDED_TO_IT;
-                    }
-                    activityType = ActivityType.TICKET_REOPENED;
-                    break;
-                default:
-                    logger.warn({ userId: req.user!.id, userType }, `Invalid user type for ticket action`);
+                });
+            }
+
+            if (action.toLowerCase() === 'close') {
+                // If ticket is RESOLVED, rating is required
+                if (ticket.status === TicketStatus.RESOLVED && !rating) {
+                    logger.warn({ ticketId: id, userId: req.user!.id }, `Rating required when closing resolved ticket`);
                     return sendResponse(res, HTTP_STATUS.BAD_REQUEST, {
                         success: false,
                         data: null,
                         error: {
-                            code: "INVALID_USER_TYPE",
-                            details: ["User type is not authorized to perform actions on tickets"]
+                            code: "RATING_REQUIRED",
+                            details: ["Rating (1-5) is required when closing a resolved ticket"]
                         }
                     });
+                }
+
+                // Employee can close ticket at any stage
+                newStatus = TicketStatus.CLOSED;
+                activityType = ActivityType.TICKET_CLOSED;
+            } else {
+                // For reopen, check if ticket status is REJECTED
+                if (ticket.status !== TicketStatus.REJECTED) {
+                    logger.warn({ ticketId: id, userId: req.user!.id, ticketStatus: ticket.status }, `Ticket cannot be reopened - status must be REJECTED`);
+                    return sendResponse(res, HTTP_STATUS.BAD_REQUEST, {
+                        success: false,
+                        data: null,
+                        error: {
+                            code: "INVALID_TICKET_STATUS",
+                            details: ["Ticket can only be reopened if it is in REJECTED status"]
+                        }
+                    });
+                }
+
+                // Determine the status to reopen to based on ticket properties
+                if (ticket.requiresApproval) {
+                    newStatus = TicketStatus.FORWARDED_TO_MANAGER;
+                } else {
+                    newStatus = ticket.ticketType === TicketType.HR
+                        ? TicketStatus.FORWARDED_TO_HR
+                        : TicketStatus.FORWARDED_TO_IT;
+                }
+                activityType = ActivityType.TICKET_REOPENED;
             }
+        }
+        // ADMIN: Can close their own tickets
+        else if (userType === UserType.ADMIN || userType === 'ADMIN') {
+            validActions = ['close'];
+
+            // Verify user is the ticket creator
+            if (!isOwnTicket) {
+                logger.warn({ ticketId: id, userId: req.user!.id }, `Admin is not the creator of this ticket`);
+                return sendResponse(res, HTTP_STATUS.FORBIDDEN, {
+                    success: false,
+                    data: null,
+                    error: {
+                        code: "FORBIDDEN",
+                        details: ["You can only close tickets that you created"]
+                    }
+                });
+            }
+
+            newStatus = TicketStatus.CLOSED;
+            activityType = ActivityType.TICKET_CLOSED;
+        }
+        else {
+            logger.warn({ userId: req.user!.id, userType }, `Invalid user type for ticket action`);
+            return sendResponse(res, HTTP_STATUS.BAD_REQUEST, {
+                success: false,
+                data: null,
+                error: {
+                    code: "INVALID_USER_TYPE",
+                    details: ["User type is not authorized to perform actions on tickets"]
+                }
+            });
         }
 
         // Validate action
         if (!validActions.includes(action.toLowerCase())) {
-            logger.warn({ userId: req.user!.id, action, userType }, `Invalid action for user type`);
+            logger.warn({ userId: req.user!.id, action, userType, validActions }, `Invalid action for user type`);
             return sendResponse(res, HTTP_STATUS.BAD_REQUEST, {
                 success: false,
                 data: null,
@@ -385,7 +480,7 @@ export const performActionTickets = async (req: Request, res: Response) => {
             });
         }
 
-        // Verify ticket is in the expected status for this user type (skip for reopen)
+        // Verify ticket is in the expected status for this user type (skip if expectedStatus is null)
         if (expectedStatus !== null && ticket.status !== expectedStatus) {
             logger.warn({ ticketId: id, userId: req.user!.id, ticketStatus: ticket.status, expectedStatus }, `Ticket not in expected status`);
             return sendResponse(res, HTTP_STATUS.BAD_REQUEST, {
@@ -393,31 +488,19 @@ export const performActionTickets = async (req: Request, res: Response) => {
                 data: null,
                 error: {
                     code: "INVALID_TICKET_STATUS",
-                    details: ["Ticket is not in the expected status for this action"]
+                    details: [`Ticket must be in ${expectedStatus} status for this action`]
                 }
             });
         }
 
-        // For managers, verify they are the manager of the ticket creator
-        if (isManager) {
-            const isTicketCreatorManager = ticket.createdBy.managerId === req.user!.id || req.user!.userType === 'ADMIN';
-            if (!isTicketCreatorManager) {
-                logger.warn({ ticketId: id, userId: req.user!.id }, `User is not the manager of ticket creator`);
-                return sendResponse(res, HTTP_STATUS.FORBIDDEN, {
-                    success: false,
-                    data: null,
-                    error: {
-                        code: "FORBIDDEN",
-                        details: ["You are not authorized to perform this action on this ticket"]
-                    }
-                });
-            }
-        }
-
-        // Update ticket status
+        // Update ticket status with rating if provided
         const updatedTicket = await prisma.ticket.update({
             where: { id: id as string },
-            data: { status: newStatus, remarks },
+            data: {
+                status: newStatus,
+                remarks,
+                ...(rating && { rating }) // Only include rating if provided
+            },
             include: {
                 createdBy: {
                     select: {
@@ -437,13 +520,14 @@ export const performActionTickets = async (req: Request, res: Response) => {
             remarks
         );
 
-        logger.info({ ticketId: id, userId: req.user!.id, action, newStatus }, `Ticket action performed successfully`);
+        logger.info({ ticketId: id, userId: req.user!.id, action, newStatus, rating }, `Ticket action performed successfully`);
         return sendResponse(res, HTTP_STATUS.OK, {
             success: true,
             data: {
                 ticket: updatedTicket,
                 action: action.toLowerCase(),
-                remarks
+                remarks,
+                ...(rating && { rating })
             },
             error: null
         });
