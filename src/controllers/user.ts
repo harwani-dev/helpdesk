@@ -20,6 +20,7 @@ export const getUserById = async (req: Request, res: Response) => {
                 profileImage: true,
                 manager: {
                     select: {
+                        username: true,
                         name: true,
                         email: true,
                     },
@@ -255,20 +256,9 @@ export const updateProfilePicture = async (req: Request, res: Response) => {
 
 export const getMe = async (req: Request, res: Response) => {
     try {
-        // req.user is set by authenticateToken middleware
-        if (!req.user) {
-            return sendResponse(res, HTTP_STATUS.UNAUTHORIZED, {
-                success: false,
-                data: null,
-                error: {
-                    code: "UNAUTHORIZED",
-                    details: ["No user information found in request"]
-                }
-            });
-        }
         const user = await prisma.user.findUnique({
             where: {
-                id: req.user.id
+                id: req.user!.id
             },
             select: {
                 id: true,
@@ -279,6 +269,17 @@ export const getMe = async (req: Request, res: Response) => {
                 manager: true
             }
         });
+
+        if (!user) {
+            return sendResponse(res, HTTP_STATUS.NOT_FOUND, {
+                success: false,
+                data: null,
+                error: {
+                    code: "USER_NOT_FOUND",
+                    details: ["User not found"]
+                }
+            });
+        }
 
         return sendResponse(res, HTTP_STATUS.OK, {
             success: true,
