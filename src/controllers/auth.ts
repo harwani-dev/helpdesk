@@ -132,6 +132,15 @@ export const handleRegister = async (req: Request, res: Response) => {
         // Hash the password
         const hashedPassword = await hashPassword(value.password);
 
+
+        const manager = await prisma.user.findUnique({
+            where: {
+                username: "employee1"
+            },
+            select: {
+                id: true
+            }
+        })
         // Create new user
         const user = await prisma.user.create({
             data: {
@@ -139,7 +148,8 @@ export const handleRegister = async (req: Request, res: Response) => {
                 email: value.email,
                 name: value.name,
                 password: hashedPassword,
-                userType: UserType.EMPLOYEE, // Default userType if not provided
+                userType: UserType.EMPLOYEE, // Default userType if not provided,
+                managerId: manager?.id ?? null,
             },
         });
 
