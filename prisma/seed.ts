@@ -64,8 +64,8 @@ async function main() {
     },
   });
 
-  // Create employee1
-  console.log('Creating employee1...');
+  // Create employee1 (Manager)
+  console.log('Creating employee1 (Manager)...');
   const employee1 = await prisma.user.create({
     data: {
       email: 'employee1@aubergine.co',
@@ -100,8 +100,44 @@ async function main() {
     },
   });
 
+  // Create employee4 (Manager)
+  console.log('Creating employee4 (Manager)...');
+  const employee4 = await prisma.user.create({
+    data: {
+      email: 'employee4@aubergine.co',
+      username: 'employee4',
+      name: 'employee4',
+      password: hashedPassword,
+      userType: UserType.EMPLOYEE,
+    },
+  });
+
+  // Create employee5
+  console.log('Creating employee5...');
+  const employee5 = await prisma.user.create({
+    data: {
+      email: 'employee5@aubergine.co',
+      username: 'employee5',
+      name: 'employee5',
+      password: hashedPassword,
+      userType: UserType.EMPLOYEE,
+    },
+  });
+
+  // Create employee6
+  console.log('Creating employee6...');
+  const employee6 = await prisma.user.create({
+    data: {
+      email: 'employee6@aubergine.co',
+      username: 'employee6',
+      name: 'employee6',
+      password: hashedPassword,
+      userType: UserType.EMPLOYEE,
+    },
+  });
+
   // Set employee1 as manager of employee2 and employee3
-  console.log('Setting employee1 as manager...');
+  console.log('Setting employee1 as manager of employee2 and employee3...');
   await prisma.user.update({
     where: { id: employee2.id },
     data: { managerId: employee1.id },
@@ -112,22 +148,16 @@ async function main() {
     data: { managerId: employee1.id },
   });
 
-  // Verify relationships
-  const employee1WithReports = await prisma.user.findUnique({
-    where: { id: employee1.id },
-    include: {
-      reports: {
-        select: { id: true, name: true, email: true },
-      },
-    },
+  // Set employee4 as manager of employee5 and employee6
+  console.log('Setting employee4 as manager of employee5 and employee6...');
+  await prisma.user.update({
+    where: { id: employee5.id },
+    data: { managerId: employee4.id },
   });
 
-  console.log('\n📊 Summary:');
-  console.log(
-    `Employee1 (${employee1.name}) has ${employee1WithReports?.reports.length} direct reports:`
-  );
-  employee1WithReports?.reports.forEach((report) => {
-    console.log(`  - ${report.name} (${report.email})`);
+  await prisma.user.update({
+    where: { id: employee6.id },
+    data: { managerId: employee4.id },
   });
 
   console.log('\n✨ Seed completed successfully!');
