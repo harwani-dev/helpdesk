@@ -8,34 +8,95 @@ import { createFeedbackSchema } from "../validation/feedback.js";
 
 export const getFeedbacks = async (req: Request, res: Response) => {
     try {
-        const feedbacks = await prisma.feedback.findMany({
-            include: {
-                givenBy: {
+        const department = typeof req.params.department === 'string' ? req.params.department : req.params.department?.[0];
+
+        // Validate department parameter
+        if (!department || (department.toLowerCase() !== 'hr' && department.toLowerCase() !== 'it')) {
+            logger.warn({ userId: req.user?.id, department }, `Invalid department parameter`);
+            return sendResponse(res, HTTP_STATUS.BAD_REQUEST, {
+                success: false,
+                data: null,
+                error: {
+                    code: "INVALID_DEPARTMENT",
+                    details: ["Department must be either 'hr' or 'it'"]
+                }
+            });
+        }
+
+        const deptUpper = department.toUpperCase();
+        const ticketType = deptUpper === 'HR' ? TicketType.HR : TicketType.IT;
+        const userType = deptUpper === 'HR' ? UserType.HR : UserType.IT;
+
+        // Get the HR or IT person
+        const person = await prisma.user.findFirst({
+            where: { userType },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                username: true,
+            }
+        });
+
+        if (!person) {
+            logger.warn({ department }, `No ${deptUpper} person found`);
+            return sendResponse(res, HTTP_STATUS.NOT_FOUND, {
+                success: false,
+                data: null,
+                error: {
+                    code: "PERSON_NOT_FOUND",
+                    details: [`No ${deptUpper} person found in the system`]
+                }
+            });
+        }
+
+        // Get all closed tickets with ratings for this department
+        const closedTicketsWithRatings = await prisma.ticket.findMany({
+            where: {
+                status: TicketStatus.CLOSED,
+                ticketType,
+                rating: {
+                    not: null
+                }
+            },
+            select: {
+                id: true,
+                ticketType: true,
+                rating: true,
+                createdBy: {
                     select: {
                         id: true,
                         name: true,
                         email: true,
-                    },
+                    }
                 },
-                givenTo: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
-                    },
-                },
+                createdAt: true,
             },
             orderBy: {
-                id: 'desc',
+                createdAt: 'desc',
             },
         });
 
+        // Calculate aggregate ratings
+        const ratings = closedTicketsWithRatings.map(t => t.rating!);
+        const averageRating = ratings.length > 0
+            ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length
+            : 0;
+
+        const performanceData = {
+            person,
+            department: deptUpper,
+            averageRating: parseFloat(averageRating.toFixed(2)),
+            totalRatedTickets: closedTicketsWithRatings.length,
+        };
+
         return sendResponse(res, HTTP_STATUS.OK, {
             success: true,
-            data: feedbacks,
+            data: performanceData,
             error: null
         });
     } catch (error) {
+        logger.error({ userId: req.user?.id }, `Get feedbacks error: ${error}`);
         return sendResponse(res, HTTP_STATUS.INTERNAL_SERVER_ERROR, {
             success: false,
             data: null,
